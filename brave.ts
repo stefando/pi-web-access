@@ -4,7 +4,7 @@ import type { SearchOptions, SearchResult, SearchResponse } from "./perplexity.t
 import { hasCredentialSource, redactCredential, resolveCredential } from "./credential-source.ts";
 import { getWebSearchConfigPath } from "./utils.ts";
 
-const BRAVE_API_URL = "https://api.search.brave.com/res/v1/web/search";
+const BRAVE_API_URL = "https://api.search.brave.com/res/v1/llm/context";
 const CONFIG_PATH = getWebSearchConfigPath();
 const SEARCH_TIMEOUT_MS = 30_000;
 
@@ -125,9 +125,13 @@ export function isBraveAvailable(): boolean {
 	});
 }
 
+interface BraveSearchOptions extends SearchOptions {
+	includeContent?: boolean;
+}
+
 export async function searchWithBrave(
 	query: string,
-	options: SearchOptions = {},
+	options: BraveSearchOptions = {},
 ): Promise<SearchResponse> {
 	const apiKey = await getApiKey(options.signal);
 	if (!apiKey) {
@@ -145,7 +149,9 @@ export async function searchWithBrave(
 	const activityId = activityMonitor.logStart({ type: "api", query: searchQuery });
 	const params = new URLSearchParams({
 		q: searchQuery,
-		count: String(options.domainFilter?.length ? 20 : numResults),
+		count: String(options.domainFilter?.length ? 50 : numResults),
+		maximum_number_of_urls: String(options.domainFilter?.length ? 50 : numResults),
+		maximum_number_of_tokens: options.includeContent ? "16384" : "4096",
 	});
 
 	if (options.recencyFilter) {
@@ -179,18 +185,36 @@ export async function searchWithBrave(
 		}
 
 		const data = await response.json() as {
-			web?: { results?: Array<{ title?: string; url?: string; description?: string }> };
+			grounding?: {
+				generic?: Array<{ url?: string; title?: string; snippets?: string[] }>;
+			};
 		};
 		activityMonitor.logComplete(activityId, response.status);
 
 		const results: SearchResult[] = [];
-		for (const item of data.web?.results ?? []) {
+		const inlineContent: Array<{ url: string; title: string; content: string; error: null }> = [];
+
+		for (const item of data.grounding?.generic ?? []) {
 			if (!item.url || !matchesDomainFilters(item.url, domainFilters)) continue;
+			const snippets = item.snippets ?? [];
+			const content = snippets.join("\n\n");
+			const snippet = snippets[0] || "";
+
 			results.push({
 				title: item.title || item.url,
 				url: item.url,
-				snippet: item.description || "",
+				snippet,
 			});
+
+			if (options.includeContent && content) {
+				inlineContent.push({
+					url: item.url,
+					title: item.title || item.url,
+					content,
+					error: null,
+				});
+			}
+
 			if (results.length >= numResults) break;
 		}
 
@@ -201,7 +225,11 @@ export async function searchWithBrave(
 			})
 			.join("\n\n");
 
-		return { answer, results };
+		const response_data: SearchResponse = { answer, results };
+		if (options.includeContent && inlineContent.length > 0) {
+			response_data.inlineContent = inlineContent;
+		}
+		return response_data;
 	} catch (err) {
 		const message = err instanceof Error ? err.message : String(err);
 		const redactedMessage = redactCredential(message, apiKey);

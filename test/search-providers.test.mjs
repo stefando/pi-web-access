@@ -54,10 +54,10 @@ test("Brave search applies domain filters in the query and returned results", as
 			capturedUrl = String(url);
 			capturedHeaders = init.headers;
 			return new Response(JSON.stringify({
-				web: { results: [
-					{ title: "GitHub", url: "https://github.com/nicobailon/pi-web-access", description: "repo" },
-					{ title: "Gist", url: "https://gist.github.com/nicobailon/abc", description: "gist" },
-					{ title: "Example", url: "https://example.com/nope", description: "example" },
+				grounding: { generic: [
+					{ title: "GitHub", url: "https://github.com/nicobailon/pi-web-access", snippets: ["repo"] },
+					{ title: "Gist", url: "https://gist.github.com/nicobailon/abc", snippets: ["gist"] },
+					{ title: "Example", url: "https://example.com/nope", snippets: ["example"] },
 				] },
 			}), { status: 200, headers: { "content-type": "application/json" } });
 		};
@@ -84,7 +84,7 @@ test("Brave search applies domain filters in the query and returned results", as
 	const output = JSON.parse(child.stdout.trim());
 	assert.match(output.q, /site:github\.com/);
 	assert.match(output.q, /NOT site:gist\.github\.com/);
-	assert.equal(output.count, "20");
+	assert.equal(output.count, "50");
 	assert.equal(output.token, "brave-test-key");
 	assert.deepEqual(output.results.map((result) => result.url), ["https://github.com/nicobailon/pi-web-access"]);
 });

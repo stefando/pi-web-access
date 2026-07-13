@@ -81,7 +81,7 @@ test('provider "all" starts every eligible provider together, excludes AnySearch
 			if (target.startsWith("https://api.search.brave.com/")) {
 				await waitForPeers("brave");
 				return new Response(JSON.stringify({
-					web: { results: [{ title: "Shared result", url: "https://example.com/shared", description: "Brave answer" }] },
+					grounding: { generic: [{ title: "Shared result", url: "https://example.com/shared", snippets: ["Brave answer"] }] },
 				}), { status: 200 });
 			}
 			if (target.startsWith("https://api.search.tinyfish.ai")) {
@@ -158,7 +158,7 @@ test('provider array searches only the selected providers concurrently and prese
 			if (target.startsWith("https://api.search.brave.com/")) {
 				await waitForPeer("brave");
 				return new Response(JSON.stringify({
-					web: { results: [{ title: "Brave result", url: "https://example.com/brave", description: "Brave answer" }] },
+					grounding: { generic: [{ title: "Brave result", url: "https://example.com/brave", snippets: ["Brave answer"] }] },
 				}), { status: 200 });
 			}
 			if (target.startsWith("https://api.search.tinyfish.ai")) {

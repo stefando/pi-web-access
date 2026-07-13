@@ -109,7 +109,7 @@ test("searchRouting accepts anonymous AnySearch availability and follows quota/t
 	assert.equal(child.status, 0, child.stderr);
 	assert.deepEqual(JSON.parse(child.stdout.trim()), {
 		provider: "brave",
-		calls: ["https://api.anysearch.com/v1/search", "https://api.search.brave.com/res/v1/web/search?q=route&count=5"],
+		calls: ["https://api.anysearch.com/v1/search", "https://api.search.brave.com/res/v1/llm/context?q=route&count=5&maximum_number_of_urls=5&maximum_number_of_tokens=4096"],
 	});
 });
 

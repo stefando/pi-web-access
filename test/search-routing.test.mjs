@@ -54,7 +54,7 @@ test("configured routing follows order after a selected network failure and retu
 	const output = JSON.parse(child.stdout.trim());
 	assert.equal(output.provider, "tavily");
 	assert.equal(output.answer, "Tavily route answer");
-	assert.deepEqual(output.calls, ["https://api.search.brave.com/res/v1/web/search?q=ordered+route&count=5", "https://api.tavily.com/search"]);
+	assert.deepEqual(output.calls, ["https://api.search.brave.com/res/v1/llm/context?q=ordered+route&count=5&maximum_number_of_urls=5&maximum_number_of_tokens=4096", "https://api.tavily.com/search"]);
 });
 
 test("configured routing fails closed on quota errors not selected by fallbackOn", async () => {
@@ -86,7 +86,7 @@ test("configured routing fails closed on quota errors not selected by fallbackOn
 	const output = JSON.parse(child.stdout.trim());
 	assert.equal(output.ok, false);
 	assert.match(output.error, /brave search failed \(quota\)/);
-	assert.deepEqual(output.calls, ["https://api.search.brave.com/res/v1/web/search?q=quota+route&count=5"]);
+	assert.deepEqual(output.calls, ["https://api.search.brave.com/res/v1/llm/context?q=quota+route&count=5&maximum_number_of_urls=5&maximum_number_of_tokens=4096"]);
 });
 
 test("auth status fails closed even when the response text looks like quota", async () => {
@@ -118,7 +118,7 @@ test("auth status fails closed even when the response text looks like quota", as
 	const output = JSON.parse(child.stdout.trim());
 	assert.equal(output.ok, false);
 	assert.match(output.error, /brave search failed \(auth\)/);
-	assert.deepEqual(output.calls, ["https://api.search.brave.com/res/v1/web/search?q=auth+route&count=5"]);
+	assert.deepEqual(output.calls, ["https://api.search.brave.com/res/v1/llm/context?q=auth+route&count=5&maximum_number_of_urls=5&maximum_number_of_tokens=4096"]);
 });
 
 test("configured routing falls back from an xAI 403 quota-exhausted response", async () => {
