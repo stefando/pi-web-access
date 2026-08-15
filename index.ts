@@ -335,11 +335,15 @@ function normalizeCuratorTimeoutSeconds(value: unknown): number | undefined {
 	return Math.min(normalized, MAX_CURATOR_TIMEOUT_SECONDS);
 }
 
-function resolveWorkflow(input: unknown, hasUI: boolean): WebSearchWorkflow {
+function resolveWorkflow(input: unknown, hasUI: boolean, provider: SearchProviderSelection = "auto"): WebSearchWorkflow {
 	const normalized = typeof input === "string" ? input.trim().toLowerCase() : "";
 	if (normalized === "auto-summary") return "auto-summary";
 	if (!hasUI) return "none";
 	if (normalized === "none") return "none";
+	if (normalized === "summary-review") return "summary-review";
+	// Brave's LLM Context API returns content pre-extracted and ranked for LLMs,
+	// so the calling agent can synthesize directly; skip the browser curator by default.
+	if (provider === "brave") return "none";
 	return "summary-review";
 }
 
@@ -1661,7 +1665,7 @@ export default function (pi: ExtensionAPI) {
 		name: toolNames.webSearch,
 		label: "Web Search",
 		description:
-			`Search the web using OpenAI, Brave, Parallel, TinyFish, Search1API, Searchinfinity, Querit, Tavily, Firecrawl, Jina, SERPdive, Kagi, Bocha, Ollama, SearXNG, DuckDuckGo, Exa, Perplexity, Gemini, AnySearch, xAI, Bright Data, or SerpBase. Pass a provider array to search only those providers simultaneously, or use provider "all" to search every eligible provider except DuckDuckGo, AnySearch, xAI, Bright Data, and SerpBase. Returns an AI-synthesized answer with source citations. OpenAI search uses a Codex subscription or OpenAI API key; xAI search uses a SuperGrok/X Premium subscription or xAI API key. DuckDuckGo, AnySearch, xAI, Bright Data, and SerpBase are available only when explicitly selected. For comprehensive research, prefer queries (plural) with 2-4 varied angles over a single query — each query gets its own synthesized answer, so varying phrasing and scope gives much broader coverage. When includeContent is true, full page content is fetched in the background. Searches auto-open the interactive browser curator and stream results live; set workflow to "none" to skip curation or "auto-summary" for a model-generated summary without the browser curator. The configured provider is used when provider is omitted or set to auto; omit provider unless explicitly overriding it. Without a configured provider, auto-selects OpenAI when suitable and available, then Exa, Brave, Parallel, TinyFish, Search1API, Searchinfinity, Querit, Tavily, Firecrawl, Jina, SERPdive, Kagi, Bocha, Ollama, Perplexity, Gemini API, or Gemini Web. When SearXNG is configured, it is preferred first for local/private search.`,
+			`Search the web using OpenAI, Brave, Parallel, TinyFish, Search1API, Searchinfinity, Querit, Tavily, Firecrawl, Jina, SERPdive, Kagi, Bocha, Ollama, SearXNG, DuckDuckGo, Exa, Perplexity, Gemini, AnySearch, xAI, Bright Data, or SerpBase. Pass a provider array to search only those providers simultaneously, or use provider "all" to search every eligible provider except DuckDuckGo, AnySearch, xAI, Bright Data, and SerpBase. Returns an AI-synthesized answer with source citations. OpenAI search uses a Codex subscription or OpenAI API key; xAI search uses a SuperGrok/X Premium subscription or xAI API key. DuckDuckGo, AnySearch, xAI, Bright Data, and SerpBase are available only when explicitly selected. For comprehensive research, prefer queries (plural) with 2-4 varied angles over a single query — each query gets its own synthesized answer, so varying phrasing and scope gives much broader coverage. When includeContent is true, full page content is fetched in the background. Searches auto-open the interactive browser curator and stream results live, except Brave, which stays silent by default because its LLM Context results need no curation; set workflow to "none" to skip curation, "auto-summary" for a model-generated summary without the browser curator, or "summary-review" to open the curator. The configured provider is used when provider is omitted or set to auto; omit provider unless explicitly overriding it. Without a configured provider, auto-selects OpenAI when suitable and available, then Exa, Brave, Parallel, TinyFish, Search1API, Searchinfinity, Querit, Tavily, Firecrawl, Jina, SERPdive, Kagi, Bocha, Ollama, Perplexity, Gemini API, or Gemini Web. When SearXNG is configured, it is preferred first for local/private search.`,
 		promptSnippet:
 			"Use for web research questions. Prefer {queries:[...]} with 2-4 varied angles over a single query for broader coverage. Omit provider unless explicitly overriding the configured default.",
 		parameters: Type.Object({
@@ -1676,7 +1680,7 @@ export default function (pi: ExtensionAPI) {
 			provider: Type.Optional(searchProviderSchema("Search provider or non-empty list of providers to search simultaneously; use all to search every eligible provider except DuckDuckGo, AnySearch, xAI, Bright Data, and SerpBase, omit this field to use the configured provider, or use auto when none is configured")),
 			workflow: Type.Optional(
 				StringEnum(["none", "summary-review", "auto-summary"], {
-					description: "Search workflow mode: none = no curator, summary-review = open curator with auto summary draft (default), auto-summary = generate summary without opening curator",
+					description: "Search workflow mode: none = no curator (default for Brave), summary-review = open curator with auto summary draft (default otherwise), auto-summary = generate summary without opening curator",
 				}),
 			),
 		}),
@@ -1687,7 +1691,8 @@ export default function (pi: ExtensionAPI) {
 				: (params.query !== undefined ? [params.query] : []);
 			const queryList = normalizeQueryList(rawQueryList);
 			const configWorkflow = loadConfigForExtensionInit().workflow;
-			const workflow = resolveWorkflow(params.workflow ?? configWorkflow, ctx?.hasUI !== false);
+			const requestedProvider = resolveRequestedProvider(params.provider);
+			const workflow = resolveWorkflow(params.workflow ?? configWorkflow, ctx?.hasUI !== false, requestedProvider);
 			const shouldCurate = workflow === "summary-review";
 			const recencyFilter = normalizeRecencyFilter(params.recencyFilter);
 
@@ -1723,7 +1728,6 @@ export default function (pi: ExtensionAPI) {
 					: searchAbort.signal;
 				let cancelled = false;
 
-				const requestedProvider = resolveRequestedProvider(params.provider);
 				const bootstrap = await loadCuratorBootstrap(requestedProvider, ctx, {
 					numResults: params.numResults,
 					recencyFilter,
@@ -3257,7 +3261,7 @@ export default function (pi: ExtensionAPI) {
 
 			let newWorkflow: WebSearchWorkflow;
 			if (arg.length === 0) {
-				const current = resolveWorkflow(loadConfigForExtensionInit().workflow, true);
+				const current = resolveWorkflow(loadConfigForExtensionInit().workflow, true, resolveRequestedProvider(undefined));
 				newWorkflow = current === "none" ? "summary-review" : "none";
 			} else if (arg === "on") {
 				newWorkflow = "summary-review";
